@@ -21,7 +21,7 @@
 #include "MetadataEx.h"
 #include "MetaFileHandle.h"
 
-typedef std::pair<MetaFileHandle, FhgfsOpsErr>  MetaFileHandleRes; 
+typedef std::pair<MetaFileHandle, FhgfsOpsErr>  MetaFileHandleRes;
 
 /*
  * This is the main class for all client side posix io operations regarding the meta server.
@@ -33,15 +33,15 @@ class MetaStore
       DirInode* referenceDir(const std::string& dirID, const bool isBuddyMirrored,
          const bool forceLoad);
       void releaseDir(const std::string& dirID);
-      MetaFileHandleRes referenceFile(EntryInfo* entryInfo);
+      MetaFileHandleRes referenceFile(EntryInfo* entryInfo, bool checkLockStore = true);
       MetaFileHandle referenceLoadedFile(const std::string& parentEntryID,
          bool parentIsBuddyMirrored, const std::string& entryID);
       bool releaseFile(const std::string& parentEntryID, MetaFileHandle& inode);
       bool referenceInode(const std::string& entryID, bool isBuddyMirrored,
          MetaFileHandle& outFileInode, DirInode*& outDirInode);
 
-      FhgfsOpsErr openFile(EntryInfo* entryInfo, unsigned accessFlags, MetaFileHandle& outInode,
-         bool checkDisposalFirst = false);
+      FhgfsOpsErr openFile(EntryInfo* entryInfo, unsigned accessFlags, bool bypassAccessCheck,
+         MetaFileHandle& outInode, bool checkDisposalFirst = false);
       void closeFile(EntryInfo* entryInfo, MetaFileHandle inode, unsigned accessFlags,
          unsigned* outNumHardlinks, unsigned* outNumRefs, bool& outLastWriterClosed);
 
@@ -112,6 +112,8 @@ class MetaStore
       std::pair<FhgfsOpsErr, IncompleteInode> beginResyncFor(const Path& path, bool isDirectory);
       FhgfsOpsErr unlinkRawMetadata(const Path& path);
 
+      FhgfsOpsErr setFileState(EntryInfo* entryInfo, const FileState& state);
+
       void invalidateMirroredDirInodes();
 
    private:
@@ -156,16 +158,18 @@ class MetaStore
       DirInode* referenceDirUnlocked(const std::string& dirID, bool isBuddyMirrored,
          bool forceLoad);
       void releaseDirUnlocked(const std::string& dirID);
-      MetaFileHandleRes referenceFileUnlocked(EntryInfo* entryInfo);
-      MetaFileHandleRes referenceFileUnlocked(DirInode& subDir, EntryInfo* entryInfo);
+      MetaFileHandleRes referenceFileUnlocked(EntryInfo* entryInfo, bool checkLockStore = true);
+      MetaFileHandleRes referenceFileUnlocked(DirInode& subDir, EntryInfo* entryInfo,
+         bool checkLockStore = true);
       MetaFileHandle referenceLoadedFileUnlocked(const std::string& parentEntryID,
          bool isBuddyMirrored, const std::string& entryID);
       MetaFileHandle referenceLoadedFileUnlocked(DirInode& subDir, const std::string& entryID);
       bool releaseFileUnlocked(const std::string& parentEntryID, MetaFileHandle& inode);
       bool releaseFileUnlocked(DirInode& subDir, MetaFileHandle& inode);
 
-      MetaFileHandleRes tryReferenceFileWriteLocked(EntryInfo* entryInfo);
-      FhgfsOpsErr tryOpenFileWriteLocked(EntryInfo* entryInfo, unsigned accessFlags, MetaFileHandle& outInode);
+      MetaFileHandleRes tryReferenceFileWriteLocked(EntryInfo* entryInfo, bool checkLockStore = true);
+      FhgfsOpsErr tryOpenFileWriteLocked(EntryInfo* entryInfo, unsigned accessFlags, bool bypassAccessCheck,
+         MetaFileHandle& outInode);
 
       bool moveReferenceToMetaFileStoreUnlocked(const std::string& parentEntryID,
          bool parentIsBuddyMirrored, const std::string& entryID);

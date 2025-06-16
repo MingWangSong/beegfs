@@ -105,7 +105,7 @@ FhgfsOpsErr GetEntryInfoMsgEx::getInfo(EntryInfo* entryInfo, StripePattern** out
 
          outNumReadSessions = fileInode->getNumSessionsRead();
          outNumWriteSessions = fileInode->getNumSessionsWrite();
-         outDataState = fileInode->getFileDataState();
+         outDataState = fileInode->getFileState().getRawValue();
 
          metaStore->releaseFile(entryInfo->getParentEntryID(), fileInode);
          return referenceRes;

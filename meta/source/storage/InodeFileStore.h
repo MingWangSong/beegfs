@@ -15,7 +15,7 @@ typedef std::map<std::string, FileInodeReferencer*> InodeMap;
 typedef InodeMap::iterator InodeMapIter;
 typedef InodeMap::const_iterator InodeMapCIter;
 typedef InodeMap::value_type InodeMapVal;
-typedef std::pair<FileInode*, FhgfsOpsErr>  FileInodeRes; 
+typedef std::pair<FileInode*, FhgfsOpsErr>  FileInodeRes;
 
 /**
  * Layer in between our inodes and the data on the underlying file system. So we read/write from/to
@@ -50,7 +50,7 @@ class InodeFileStore
       bool closeFile(EntryInfo* entryInfo, FileInode* inode, unsigned accessFlags,
          unsigned* outNumHardlinks, unsigned* outNumRefs, bool& outLastWriterClosed);
       FhgfsOpsErr openFile(EntryInfo* entryInfo, unsigned accessFlags,
-         FileInode*& outInode, bool loadFromDisk);
+         FileInode*& outInode, bool loadFromDisk, bool bypassAccessCheck);
 
       FhgfsOpsErr stat(EntryInfo* entryInfo, bool loadFromDisk, StatData& outStatData);
       FhgfsOpsErr setAttr(EntryInfo* entryInfo, int validAttribs, SettableFileAttribs* attribs);

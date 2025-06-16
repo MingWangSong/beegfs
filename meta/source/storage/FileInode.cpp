@@ -698,7 +698,6 @@ std::string FileInode::getMetaFilePath(EntryInfo* entryInfo)
 
         std::string dirEntryPath = MetaStorageTk::getMetaDirEntryPath(
             dentriesPath->str(), entryInfo->getParentEntryID());
-            
         return MetaStorageTk::getMetaDirEntryIDPath(dirEntryPath) + entryInfo->getEntryID();
     }
 
@@ -2995,4 +2994,46 @@ void FileInode::initLocksRandomForSerializationTests()
 
    StringTk::genRandomAlphaNumericString(this->referenceParentID, rand.getNextInRange(2, 30) );
    this->numParentRefs.set(rand.getNextInt() );
+}
+
+/**
+ * Checks whether current file state allows the requested access and increments appropriate
+ * session counter if permitted. The entire operation occurs under a single write lock
+ * to prevent races between open() operation and state validate-and-update operations.
+ *
+ * @param accessFlags OPENFILE_ACCESS_... flags
+ * @param bypassAccessCheck if true, skip all file state-based access checks
+ * @return FhgfsOpsErr_SUCCESS if file opened successfully
+ *         FhgfsOpsErr_FILEACCESS_DENIED if file state restricts the requested access
+ */
+FhgfsOpsErr FileInode::checkAccessAndOpen(unsigned accessFlags, bool bypassAccessCheck)
+{
+   RWLockGuard lock(rwlock, SafeRWLock_WRITE);
+
+   if (!bypassAccessCheck)
+   {
+      FileState state(getFileStateUnlocked());
+
+      // Fast path: Check if file is unlocked (common case)
+      if (unlikely(!state.isUnlocked()))
+      {
+         // File has active state restrictions - determine what access types are being requested
+         bool readRequested = accessFlags & (OPENFILE_ACCESS_READ | OPENFILE_ACCESS_READWRITE);
+         bool writeRequested = accessFlags & (OPENFILE_ACCESS_WRITE | OPENFILE_ACCESS_READWRITE |
+                                          OPENFILE_ACCESS_TRUNC);
+
+         // Access not allowed if: state implies fully locked, or
+         // read requested when read-locked, or write requested when write-locked
+         bool blockOpenRequest = state.isFullyLocked() ||
+                                 (state.isReadLocked() && readRequested) ||
+                                 (state.isWriteLocked() && writeRequested);
+
+         if (blockOpenRequest)
+            return FhgfsOpsErr_FILEACCESS_DENIED;
+      }
+   }
+
+   // Access allowed - increment session counter
+   incNumSessionsUnlocked(accessFlags);
+   return FhgfsOpsErr_SUCCESS;
 }

@@ -14,8 +14,8 @@ slapd.service autofs.service ypbind.service nscd.service nslcd.service sshd.serv
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/etc/init.d/beegfs-client start
-ExecStop=/etc/init.d/beegfs-client stop
+ExecStart=/opt/beegfs/sbin/beegfs-client start
+ExecStop=/opt/beegfs/sbin/beegfs-client stop
 
 [Install]
 WantedBy=multi-user.target

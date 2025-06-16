@@ -46,6 +46,7 @@ struct FhgfsOpsErrListEntry const __FHGFSOPS_ERRLIST[] =
    {"Argument list too long", E2BIG}, // FhgfsOpsErr_TOOLONG
    {"Metadata version mismatch", ESTALE}, // FhgfsOpsErr_METAVERSIONMISMATCH
    {"Inode is locked", EBUSY},      // FhgfsOpsErr_INODELOCKED
+   {"File access denied by state restrictions", EWOULDBLOCK}, // FhgfsOpsErr_FILEACCESS_DENIED
    {NULL, 0}
 };
 

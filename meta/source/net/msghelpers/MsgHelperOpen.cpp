@@ -16,7 +16,7 @@
  * @param outOpenFile only set if return indicates success.
  */
 FhgfsOpsErr MsgHelperOpen::openFile(EntryInfo* entryInfo, unsigned accessFlags,
-   bool useQuota, unsigned msgUserID, MetaFileHandle& outFileInode,
+   bool useQuota, bool bypassAccessCheck, unsigned msgUserID, MetaFileHandle& outFileInode,
    bool isSecondary)
 {
    const char* logContext = "Open File Helper";
@@ -27,7 +27,7 @@ FhgfsOpsErr MsgHelperOpen::openFile(EntryInfo* entryInfo, unsigned accessFlags,
    if(accessFlags & OPENFILE_ACCESS_TRUNC)
       truncLocalRequired = MsgHelperTrunc::isTruncChunkRequired(entryInfo, 0);
 
-   FhgfsOpsErr openRes = openMetaFile(entryInfo, accessFlags, outFileInode);
+   FhgfsOpsErr openRes = openMetaFile(entryInfo, accessFlags, bypassAccessCheck, outFileInode);
 
 
    if(openRes != FhgfsOpsErr_SUCCESS)
@@ -71,11 +71,11 @@ FhgfsOpsErr MsgHelperOpen::openFile(EntryInfo* entryInfo, unsigned accessFlags,
 }
 
 FhgfsOpsErr MsgHelperOpen::openMetaFile(EntryInfo* entryInfo, unsigned accessFlags,
-   MetaFileHandle& outOpenInode)
+   bool bypassAccessCheck, MetaFileHandle& outOpenInode)
 {
    MetaStore* metaStore = Program::getApp()->getMetaStore();
 
-   FhgfsOpsErr openRes = metaStore->openFile(entryInfo, accessFlags, outOpenInode);
+   FhgfsOpsErr openRes = metaStore->openFile(entryInfo, accessFlags, bypassAccessCheck, outOpenInode);
 
    return openRes;
 }

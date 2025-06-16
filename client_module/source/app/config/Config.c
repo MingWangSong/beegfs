@@ -302,6 +302,7 @@ void _Config_loadDefaults(Config* this)
    _Config_configMapRedefine(this, "sysXAttrsEnabled",                 "false");
    _Config_configMapRedefine(this, "sysXAttrsCheckCapabilities",       "never");
    _Config_configMapRedefine(this, "sysACLsEnabled",                   "false");
+   _Config_configMapRedefine(this, "sysBypassFileAccessCheckOnMeta",   "false");
 
    _Config_configMapRedefine(this, "quotaEnabled",                     "false");
    _Config_configMapRedefine(this, "sysFileEventLogMask",              EVENTLOGMASK_NONE);
@@ -720,6 +721,9 @@ bool _Config_applyConfigMap(Config* this)
             this->sysXAttrsCheckCapabilities = CHECKCAPABILITIES_Never;
       }
       else
+      if(!strcmp(keyStr, "sysBypassFileAccessCheckOnMeta"))
+         this->sysBypassFileAccessCheckOnMeta = StringTk_strToBool(valueStr);
+      else
       if(!strcmp(keyStr, "sysACLsEnabled") )
          this->sysACLsEnabled = StringTk_strToBool(valueStr);
       else
@@ -913,7 +917,7 @@ void __Config_loadFromMountConfig(Config* this, MountConfig* mountConfig)
    {
       char* delimiter  = mountConfig->connInterfacesList;
 
-      for(size_t listLength = strlen(mountConfig->connInterfacesList); 
+      for(size_t listLength = strlen(mountConfig->connInterfacesList);
          listLength ; ++delimiter,--listLength)
       {
          if(*delimiter == ' ')
@@ -1254,7 +1258,7 @@ bool __Config_initImplicitVals(Config* this)
 
    if (!__Config_setIfEqualInt(&this->connRDMAMetaBufSize, CONFIG_CONN_RDMA_DEFAULT, this->connRDMABufSize))
       __Config_ensureMinInt(&this->connRDMAMetaBufSize, PAGE_SIZE, "connRDMAMetaBufSize");
-   
+
    if (!__Config_setIfEqualInt(&this->connRDMAMetaFragmentSize, 0, this->connRDMAMetaBufSize))
       if (!__Config_setIfEqualInt(&this->connRDMAMetaFragmentSize, CONFIG_CONN_RDMA_DEFAULT, this->connRDMAFragmentSize))
          __Config_ensureMinInt(&this->connRDMAMetaFragmentSize, PAGE_SIZE, "connRDMAMetaFragmentSize");

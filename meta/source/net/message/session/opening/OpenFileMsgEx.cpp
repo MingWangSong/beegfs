@@ -40,6 +40,9 @@ std::unique_ptr<MirroredMessageResponseState> OpenFileMsgEx::executeLocally(Resp
 
    EntryInfo* entryInfo = this->getEntryInfo();
    bool useQuota = isMsgHeaderFeatureFlagSet(OPENFILEMSG_FLAG_USE_QUOTA);
+   bool bypassAccessCheck = isMsgHeaderFeatureFlagSet(OPENFILEMSG_FLAG_BYPASS_ACCESS_CHECK);
+
+   const bool eventLoggingEnabled = !isSecondary && app->getFileEventLogger() && getFileEvent();
    MetaFileHandle inode;
 
    PathInfo pathInfo;
@@ -50,7 +53,8 @@ std::unique_ptr<MirroredMessageResponseState> OpenFileMsgEx::executeLocally(Resp
       : app->getSessions();
 
    FhgfsOpsErr openRes = MsgHelperOpen::openFile(
-      entryInfo, getAccessFlags(), useQuota, getMsgHeaderUserID(), inode, isSecondary);
+      entryInfo, getAccessFlags(), useQuota, bypassAccessCheck, getMsgHeaderUserID(),
+      inode, isSecondary);
 
    if (openRes == FhgfsOpsErr_SUCCESS && shouldFixTimestamps())
       fixInodeTimestamp(*inode, fileTimestamps, entryInfo);
@@ -59,7 +63,27 @@ std::unique_ptr<MirroredMessageResponseState> OpenFileMsgEx::executeLocally(Resp
    updateNodeOp(ctx, MetaOpCounter_OPEN);
 
    if (openRes != FhgfsOpsErr_SUCCESS)
-   { // error occurred
+   {
+      // If open() fails due to file state restrictions, emit an OPEN_BLOCKED event
+      // (when event logging is enabled). The numHardlinks in event context will be 0
+      // since inode is nullptr after access denial.
+      if ((openRes == FhgfsOpsErr_FILEACCESS_DENIED) && eventLoggingEnabled)
+      {
+         FileEvent* fileEvent = const_cast<FileEvent*>(getFileEvent());
+         fileEvent->type = FileEventType::OPEN_BLOCKED;
+
+         EventContext eventCtx = makeEventContext(
+            entryInfo,
+            entryInfo->getParentEntryID(),
+            getMsgHeaderUserID(),
+            "",
+            inode ? inode->getNumHardlinks() : 0,
+            isSecondary
+         );
+         logEvent(app->getFileEventLogger(), *fileEvent, eventCtx);
+      }
+
+      // error occurred
       Raid0Pattern dummyPattern(1, UInt16Vector{});
 
       // generate response
@@ -74,7 +98,7 @@ std::unique_ptr<MirroredMessageResponseState> OpenFileMsgEx::executeLocally(Resp
       }
    }
 
-   if (!isSecondary && app->getFileEventLogger() && getFileEvent())
+   if (eventLoggingEnabled)
    {
       EventContext eventCtx = makeEventContext(
          entryInfo,

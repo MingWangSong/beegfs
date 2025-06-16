@@ -34,7 +34,9 @@ FhgfsOpsErr MsgHelperLocking::trySesssionRecovery(EntryInfo* entryInfo, NumNodeI
    unsigned recoveryAccessFlags = OPENFILE_ACCESS_READWRITE; /* (r+w is our only option, since we
       don't know the original flags) */
 
-   FhgfsOpsErr openRes = metaStore->openFile(entryInfo, recoveryAccessFlags, recoveryFile);
+   bool bypassAccessCheck = false; // Enforce regular file access restrictions
+   FhgfsOpsErr openRes = metaStore->openFile(entryInfo, recoveryAccessFlags,
+      bypassAccessCheck, recoveryFile);
    if(openRes != FhgfsOpsErr_SUCCESS)
    { // file could not be opened => there's nothing we can do in this case
       LogContext(logContext).log(Log_WARNING, std::string("Recovery of file session failed: ") +

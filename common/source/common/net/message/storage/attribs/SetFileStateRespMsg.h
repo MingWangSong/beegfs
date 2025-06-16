@@ -3,17 +3,17 @@
 #include <common/net/message/SimpleIntMsg.h>
 #include <common/storage/StorageErrors.h>
 
-class SetFileDataStateRespMsg : public SimpleIntMsg
+class SetFileStateRespMsg : public SimpleIntMsg
 {
    public:
-      SetFileDataStateRespMsg(int result) : SimpleIntMsg(NETMSGTYPE_SetFileDataStateResp, result)
+      SetFileStateRespMsg(int result) : SimpleIntMsg(NETMSGTYPE_SetFileStateResp, result)
       {
       }
 
       /**
        * For deserialization only
        */
-      SetFileDataStateRespMsg() : SimpleIntMsg(NETMSGTYPE_SetFileDataStateResp)
+      SetFileStateRespMsg() : SimpleIntMsg(NETMSGTYPE_SetFileStateResp)
       {
       }
 

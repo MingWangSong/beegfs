@@ -462,9 +462,9 @@ void DiskMetaData::serializeDentryV6(Serializer& ser)
 
    ser % inodeFeatureFlags;
 
-   if (inodeFeatureFlags & FILEINODE_FEATURE_HAS_DATA_STATE)
+   if (inodeFeatureFlags & FILEINODE_FEATURE_HAS_STATE_FLAGS)
    {
-      ser % inodeData->getFileDataState();
+      ser % inodeData->getFileState();
       ser.skip(3); // unused (3 bytes) for 8 byte alignment
    }
    else
@@ -521,12 +521,12 @@ void DiskMetaData::deserializeDentryV5V6(Deserializer& des, bool hasStoragePool)
       this->inodeData->setInodeFeatureFlags(inodeFeatureFlags);
    }
 
-   if (inodeFeatureFlags & FILEINODE_FEATURE_HAS_DATA_STATE)
+   if (inodeFeatureFlags & FILEINODE_FEATURE_HAS_STATE_FLAGS)
    {
       uint8_t state;
 
       des % state;
-      this->inodeData->setFileDataState(state);
+      this->inodeData->setFileState(state);
 
       // unused, for alignment
       des.skip(3);
@@ -824,7 +824,7 @@ unsigned DiskMetaData::getSupportedDentryV5FileInodeFeatureFlags()
 {
    return FILEINODE_FEATURE_MIRRORED | FILEINODE_FEATURE_BUDDYMIRRORED |
       FILEINODE_FEATURE_HAS_ORIG_PARENTID | FILEINODE_FEATURE_HAS_ORIG_UID |
-      FILEINODE_FEATURE_HAS_VERSIONS | FILEINODE_FEATURE_HAS_RST | FILEINODE_FEATURE_HAS_DATA_STATE;
+      FILEINODE_FEATURE_HAS_VERSIONS | FILEINODE_FEATURE_HAS_RST | FILEINODE_FEATURE_HAS_STATE_FLAGS;
 }
 
 /**

@@ -21,7 +21,7 @@
 #define FILEINODE_FEATURE_HAS_STATFLAGS      64 // stat-data have their own flags
 #define FILEINODE_FEATURE_HAS_VERSIONS      128 // file has a cto version counter
 #define FILEINODE_FEATURE_HAS_RST           256 // file has remote targets
-#define FILEINODE_FEATURE_HAS_DATA_STATE    512 // file has a data state (local, offloaded, etc.)
+#define FILEINODE_FEATURE_HAS_STATE_FLAGS   512 // file has state flags (access state + data state)
 
 enum FileInodeOrigFeature
 {
@@ -30,12 +30,70 @@ enum FileInodeOrigFeature
    FileInodeOrigFeature_FALSE
 };
 
-enum FileDataState : uint8_t
-{
-   FileDataState_NONE      = 0x00,  // Data stored in BeeGFS but the data state has never been set
-   FileDataState_LOCAL     = 0x01,  // Data stored in BeeGFS (default)
-   FileDataState_LOCKED    = 0x02,  // Data is locked and cannot be accessed
-   FileDataState_OFFLOADED = 0x03,  // Data is offloaded to a remote target
+// Access control flags (lower 5 bits)
+// NOTE: The naming of access flags might seem counter-intuitive.
+//
+// - UNLOCKED means no access restrictions are in place
+// - READ_LOCK means READ operations are BLOCKED, allowing only write operations.
+//   The file is effectively "write-only"
+// - WRITE_LOCK means WRITE operations are BLOCKED, allowing only read operations.
+//   The file is effectively "read-only"
+// - When both READ_LOCK and WRITE_LOCK are set, all access is blocked
+namespace AccessFlags {
+   constexpr uint8_t UNLOCKED    = 0x00; // No flags set (no restrictions)
+   constexpr uint8_t READ_LOCK   = 0x01; // Bit 0 (1 << 0) - Block reads
+   constexpr uint8_t WRITE_LOCK  = 0x02; // Bit 1 (1 << 1) - Block writes
+   constexpr uint8_t RESERVED3   = 0x04; // Bit 2 (1 << 2) - Reserved for future use
+   constexpr uint8_t RESERVED4   = 0x08; // Bit 3 (1 << 3) - Reserved for future use
+   constexpr uint8_t RESERVED5   = 0x10; // Bit 4 (1 << 4) - Reserved for future use
+}
+
+// Represents data state (HSM application defined) (0-7)
+using DataState = uint8_t;
+
+class FileState {
+   public:
+      static constexpr uint8_t ACCESS_FLAGS_MASK  = 0x1F;  // 0001 1111 (5 bits)
+      static constexpr uint8_t DATA_STATE_MASK    = 0xE0;  // 1110 0000 (3 bits)
+      static constexpr uint8_t DATA_STATE_SHIFT   = 5;     // Number of bits to shift
+
+      // Constructor taking a raw byte value
+      explicit FileState(uint8_t value = 0) : raw(value) {}
+
+      uint8_t getAccessFlags() const
+      {
+         return raw & ACCESS_FLAGS_MASK;
+      }
+
+      DataState getDataState() const
+      {
+         return (raw & DATA_STATE_MASK) >> DATA_STATE_SHIFT;
+      }
+
+      bool isReadLocked() const
+      {
+         return (raw & AccessFlags::READ_LOCK) != 0;
+      }
+
+      bool isWriteLocked() const
+      {
+         return (raw & AccessFlags::WRITE_LOCK) != 0;
+      }
+
+      bool isUnlocked() const
+      {
+         return (getAccessFlags() == 0);
+      }
+
+      bool isFullyLocked() const
+      {
+         return (isReadLocked() && isWriteLocked());
+      }
+
+      uint8_t getRawValue() const { return raw; }
+
+private:
+      uint8_t raw; // Raw byte representing access flags + data state of a file
 };
 
 /* inode data inlined into a direntry, such as in DIRENTRY_STORAGE_FORMAT_VER3 */
@@ -63,7 +121,7 @@ class FileInodeStoreData
          origFeature(FileInodeOrigFeature_UNSET),
          fileVersion(0),
          metaVersion(0),
-         fileDataState(FileDataState_NONE)
+         rawFileState(0)
       { }
 
       FileInodeStoreData(const std::string& entryID, StatData* statData,
@@ -76,7 +134,7 @@ class FileInodeStoreData
          origParentUID(origParentUID),
          origParentEntryID(origParentEntryID),
          fileVersion(0),
-         metaVersion(0), fileDataState(FileDataState_NONE)
+         metaVersion(0), rawFileState(0)
       {
          this->stripePattern              = stripePattern->clone();
 
@@ -121,7 +179,8 @@ class FileInodeStoreData
       uint32_t fileVersion;
       uint32_t metaVersion;
 
-      FileDataState fileDataState;
+      // raw byte value representing access flags + data state
+      uint8_t rawFileState;
 
       void getPathInfo(PathInfo* outPathInfo);
 
@@ -145,15 +204,15 @@ class FileInodeStoreData
       uint32_t getFileVersion() const { return fileVersion; }
       uint32_t getMetaVersion() const { return metaVersion; }
 
-      void     setFileVersion(uint32_t fileVersion) 
-      { 
-         this->fileVersion = fileVersion;  
+      void     setFileVersion(uint32_t fileVersion)
+      {
+         this->fileVersion = fileVersion;
       }
 
-      void     setMetaVersion(uint32_t metaVersion) 
-      { 
-         this->metaVersion = metaVersion; 
-         setMetaVersionStat(metaVersion);  //update metadata version in StatData   
+      void     setMetaVersion(uint32_t metaVersion)
+      {
+         this->metaVersion = metaVersion;
+         setMetaVersionStat(metaVersion);  //update metadata version in StatData
       }
 
    protected:
@@ -176,7 +235,7 @@ class FileInodeStoreData
          this->origParentEntryID = diskData->origParentEntryID;
          this->fileVersion       = diskData->fileVersion;
          setMetaVersion(diskData->metaVersion);
-         this->fileDataState     = diskData->fileDataState;
+         this->rawFileState     = diskData->rawFileState;
       }
 
       void setInodeFeatureFlags(unsigned flags)
@@ -220,40 +279,31 @@ class FileInodeStoreData
          return (getInodeFeatureFlags() & FILEINODE_FEATURE_HAS_RST);
       }
 
-      void setFileDataState(uint8_t state)
+      void setFileState(uint8_t value)
       {
-         switch (state)
-         {
-            case FileDataState_NONE:
-            {
-               // Special case: Reset the file data state to NONE and clear the associated
-               // feature flag (FILEINODE_FEATURE_HAS_DATA_STATE), indicating that no data
-               // state is active until explicitly set again.
-               this->fileDataState = FileDataState_NONE;
-               removeInodeFeatureFlag(FILEINODE_FEATURE_HAS_DATA_STATE);
-               break;
-            }
-            case FileDataState_LOCAL:
-            case FileDataState_LOCKED:
-            case FileDataState_OFFLOADED:
-            {
-               this->fileDataState = static_cast<FileDataState>(state);
-               addInodeFeatureFlag(FILEINODE_FEATURE_HAS_DATA_STATE);
-               break;
-            }
-            default:
-            {
-               // Invalid state handling. Log a warning and retain current file data state.
-               LogContext(__func__).log(Log_WARNING, "Invalid file data state: " +
-               StringTk::uintToStr(state) + ". Keeping current state.");
-               break;
-            }
-         }
+         this->rawFileState = value;
+         if (this->rawFileState == 0)
+            removeInodeFeatureFlag(FILEINODE_FEATURE_HAS_STATE_FLAGS);
+         else
+            addInodeFeatureFlag(FILEINODE_FEATURE_HAS_STATE_FLAGS);
       }
 
-      uint8_t getFileDataState() const
+      uint8_t getFileState() const
       {
-         return this->fileDataState;
+         // If FILEINODE_FEATURE_HAS_STATE_FLAGS is not set,
+         // return the default "unlocked + zero data state"
+         if (!(inodeFeatureFlags & FILEINODE_FEATURE_HAS_STATE_FLAGS))
+         {
+            constexpr uint8_t defaultAccessFlags = AccessFlags::UNLOCKED;
+            constexpr uint8_t defaultDataState   = 0;
+
+            // Format: [dataState (upper 3 bits) | accessFlags (lower 5 bits)]
+            return (defaultAccessFlags & FileState::ACCESS_FLAGS_MASK) |
+               ((defaultDataState << FileState::DATA_STATE_SHIFT) & FileState::DATA_STATE_MASK);
+         }
+
+         // Return the explicitly set state if feature is supported
+         return rawFileState;
       }
 
       void setInodeStatData(StatData& statData)

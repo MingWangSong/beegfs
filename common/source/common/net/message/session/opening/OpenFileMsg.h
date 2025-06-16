@@ -7,8 +7,9 @@
 #include <common/storage/Path.h>
 #include <common/storage/StatData.h>
 
-#define OPENFILEMSG_FLAG_USE_QUOTA          1 /* if the message contains quota informations */
-#define OPENFILEMSG_FLAG_HAS_EVENT          2 /* contains file event logging information */
+#define OPENFILEMSG_FLAG_USE_QUOTA           1 /* if the message contains quota informations */
+#define OPENFILEMSG_FLAG_HAS_EVENT           2 /* contains file event logging information */
+#define OPENFILEMSG_FLAG_BYPASS_ACCESS_CHECK 4 /* bypass file access checks on metadata server */
 
 class OpenFileMsg : public MirroredMessageBase<OpenFileMsg>
 {
@@ -90,8 +91,8 @@ class OpenFileMsg : public MirroredMessageBase<OpenFileMsg>
 
       unsigned getSupportedHeaderFeatureFlagsMask() const override
       {
-         return OPENFILEMSG_FLAG_USE_QUOTA |
-            OPENFILEMSG_FLAG_HAS_EVENT;
+         return OPENFILEMSG_FLAG_USE_QUOTA
+            | OPENFILEMSG_FLAG_HAS_EVENT | OPENFILEMSG_FLAG_BYPASS_ACCESS_CHECK;
       }
 
       bool supportsMirroring() const override { return true; }

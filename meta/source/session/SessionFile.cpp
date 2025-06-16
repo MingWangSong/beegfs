@@ -13,7 +13,10 @@ bool SessionFile::operator==(const SessionFile& other) const
 
 bool SessionFile::relinkInode(MetaStore& store)
 {
-   auto openRes = store.openFile(&entryInfo, accessFlags, inode, true);
+   // Bypass access checks during session recovery to ensure locked files in disposal directory
+   // can be properly recovered after system crashes or unclean shutdowns. This preserves session
+   // continuity regardless of file state locks. We may revisit this approach if anything changes.
+   auto openRes = store.openFile(&entryInfo, accessFlags, /* bypassAccessCheck */ true, inode, true);
 
    if (openRes == FhgfsOpsErr_SUCCESS)
       return true;

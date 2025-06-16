@@ -134,6 +134,8 @@ class FileInode
        */
       void initLocksRandomForSerializationTests();
 
+      FhgfsOpsErr checkAccessAndOpen(unsigned openAccessFlags, bool bypassAccessCheck);
+
    public:
       template<typename InodeT>
       class LockState
@@ -667,13 +669,16 @@ class FileInode
       void incNumSessions(unsigned accessFlags)
       {
          SafeRWLock safeLock(&rwlock, SafeRWLock_WRITE);
+         incNumSessionsUnlocked(accessFlags);
+         safeLock.unlock();
+      }
 
+      void incNumSessionsUnlocked(unsigned accessFlags)
+      {
          if(accessFlags & OPENFILE_ACCESS_READ)
             this->numSessionsRead++;
          else
             this->numSessionsWrite++; // (includes read+write)
-
-         safeLock.unlock();
       }
 
       FileInode* clone()
@@ -827,19 +832,95 @@ class FileInode
          return retVal;
       }
 
-      void setFileDataState(uint8_t value)
+      /**
+       * Sets the file state using a raw state value and persists it to disk.
+       * Only updates file state if the access flags transition is allowed based
+       * on active read/write sessions.
+       *
+       * @param entryInfo EntryInfo of the file to update
+       * @param value Raw byte value representing the new file state
+       * @return FhgfsOpsErr_SUCCESS if state was successfully updated to disk
+       *         FhgfsOpsErr_INUSE if file has active client sessions
+       *         FhgfsOpsErr_INTERNAL if state update failed to persist to disk
+       * @note This method is called by the FileState-based overload below.
+       */
+      FhgfsOpsErr setFileState(EntryInfo* entryInfo, uint8_t value)
       {
-         SafeRWLock safeLock(&rwlock, SafeRWLock_WRITE);
-         this->inodeDiskData.setFileDataState(value);
-         safeLock.unlock();
+         RWLockGuard lock(rwlock, SafeRWLock_WRITE);
+
+         FileState oldState(this->getFileStateUnlocked());
+         FileState newState(value);
+
+         // Prevent file state changes if file has active sessions
+         if (!checkAccessFlagTransition(oldState, newState))
+            return FhgfsOpsErr_INUSE;
+
+         this->inodeDiskData.setFileState(value);
+         if (this->storeUpdatedInodeUnlocked(entryInfo))
+            return FhgfsOpsErr_SUCCESS;
+         else
+            return FhgfsOpsErr_INTERNAL;
       }
 
-      uint8_t getFileDataState()
+      FhgfsOpsErr setFileState(EntryInfo* entryInfo, const FileState& state)
       {
-         SafeRWLock safeLock(&rwlock, SafeRWLock_READ);
-         uint8_t retVal = this->getFileDataStateUnlocked();
-         safeLock.unlock();
-         return retVal;
+         return setFileState(entryInfo, state.getRawValue());
+      }
+
+      /**
+       * Validates whether a file access flag transition is permitted
+       * based on the current active read/write sessions.
+       * Transition rules:
+       * - Acquiring stricter locks (adding flags): not allowed if conflicting sessions exist
+       * - Relaxing locks (removing flags): not allowed if dependent sessions exist
+       *   (This protects HSM/special clients using bypass access privileges)
+       * - Full unlock (no flags): only allowed if there are no active sessions
+       *
+       * Special client handling using bypass access:
+       * When a file is already locked (e.g., READ_LOCK), only special clients with
+       * bypass permissions can have active read sessions. These sessions must finish
+       * before removing the lock to ensure consistency of HSM operations.
+       *
+       * @param oldState The current file state
+       * @param newState The requested new file state
+       * @return true if the transition is allowed, false otherwise
+       */
+      bool checkAccessFlagTransition(const FileState& oldState, const FileState& newState) const
+      {
+         const uint8_t oldFlags = oldState.getAccessFlags();
+         const uint8_t newFlags = newState.getAccessFlags();
+
+         // no change in access flags
+         // (e.g., READ_LOCK -> READ_LOCK)
+         if (oldFlags == newFlags)
+            return true;
+
+         // --- Acquiring / Relaxing locks ---
+         const uint8_t addedFlags   = newFlags & ~oldFlags;
+         const uint8_t removedFlags = oldFlags & ~newFlags;
+
+         // --- Acquiring stricter locks ---
+         // Prevent upgrading to a stricter lock if there are conflicting sessions
+         if ((addedFlags & AccessFlags::READ_LOCK) && numSessionsRead > 0)
+            return false;
+         if ((addedFlags & AccessFlags::WRITE_LOCK) && numSessionsWrite > 0)
+            return false;
+
+         // --- Relaxing locks ---
+         // Prevent loosening restrictions while dependent sessions are active
+         // These checks primarily protect special client operations using bypass access
+         if ((removedFlags & AccessFlags::READ_LOCK) && numSessionsRead > 0)
+            return false;
+         if ((removedFlags & AccessFlags::WRITE_LOCK) && numSessionsWrite > 0)
+            return false;
+
+         return true;
+      }
+
+      FileState getFileState()
+      {
+         RWLockGuard lock(rwlock, SafeRWLock_READ);
+         return FileState(this->getFileStateUnlocked());
       }
 
       bool incrementFileVersion(EntryInfo* entryInfo)
@@ -920,9 +1001,9 @@ class FileInode
          return this->inodeDiskData.getIsRstAvailable();
       }
 
-      uint8_t getFileDataStateUnlocked() const
+      uint8_t getFileStateUnlocked() const
       {
-         return this->inodeDiskData.getFileDataState();
+         return this->inodeDiskData.getFileState();
       }
 };
 

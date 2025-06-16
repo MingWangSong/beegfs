@@ -93,7 +93,10 @@ override_dh_install:
 	# set the compat fstype
 	echo beegfs-$(BEEGFS_MAJOR) > \
 		debian/beegfs-client-compat/opt/beegfs/src/client/client_compat_module_$(BEEGFS_MAJOR)/build/beegfs.fstype
-	install -D client_module/build/dist/etc/init.d/beegfs-client.init debian/beegfs-client.init
+	install -D client_module/build/dist/sbin/beegfs-client.init \
+		debian/beegfs-client/opt/beegfs/sbin/beegfs-client
+	mkdir -p debian/beegfs-client/etc/init.d
+	ln -s /opt/beegfs/sbin/beegfs-client debian/beegfs-client/etc/init.d/beegfs-client
 	install -D -m644 client_module/build/dist/etc/default/beegfs-client \
 		debian/beegfs-client.default
 	install -D -m644 client_module/build/dist/etc/beegfs-client.conf \

@@ -75,6 +75,7 @@ const char* const PROCFSHELPER_CONFIGKEYS[] =
    "sysSessionChecksEnabled",
    "sysXAttrsEnabled",
    "sysXAttrsCheckCapabilities",
+   "sysBypassFileAccessCheckOnMeta",
    "quotaEnabled",
    "sysFileEventLogMask",
    "sysRenameEbusyAsXdev",
@@ -157,6 +158,8 @@ int ProcFsHelper_readV2_config(struct seq_file* file, App* app)
    seq_printf(file, "sysXAttrsEnabled = %d\n", (int)Config_getSysXAttrsEnabled(cfg) );
    seq_printf(file, "sysXAttrsCheckCapabilities = %s\n",
       Config_checkCapabilitiesTypeToStr(Config_getSysXAttrsCheckCapabilities(cfg) ) );
+   seq_printf(file, "sysBypassFileAccessCheckOnMeta = %d\n",
+      (int)Config_getSysBypassFileAccessCheckOnMeta(cfg) );
    seq_printf(file, "sysSessionCheckOnClose = %d\n", (int)Config_getSysSessionCheckOnClose(cfg) );
    seq_printf(file, "sysSessionChecksEnabled = %d\n", (int)Config_getSysSessionChecksEnabled(cfg) );
    seq_printf(file, "quotaEnabled = %d\n", (int)Config_getQuotaEnabled(cfg) );
@@ -370,6 +373,10 @@ int ProcFsHelper_read_config(char* buf, char** start, off_t offset, int size, in
    else
    if(!strcmp(currentKey, "sysXAttrsCheckCapabilities") )
       count = scnprintf(buf, size, "%s = %d\n", currentKey, Config_getSysXAttrsCheckCapabilities(cfg) );
+   else
+   if(!strcmp(currentKey, "sysBypassFileAccessCheckOnMeta") )
+      count = scnprintf(buf, size, "%s = %d\n", currentKey,
+         Config_getSysBypassFileAccessCheckOnMeta(cfg) );
    else
    if (!strcmp(currentKey, "sysRenameEbusyAsXdev"))
       count = scnprintf(buf, size, "%s = %u\n", currentKey, (unsigned) cfg->sysRenameEbusyAsXdev);

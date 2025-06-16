@@ -10,7 +10,7 @@ class MsgHelperOpen
 {
    public:
       static FhgfsOpsErr openFile(EntryInfo* entryInfo, unsigned accessFlags,
-         bool useQuota, unsigned msgUserID, MetaFileHandle& outFileInode,
+         bool useQuota, bool bypassAccessCheck, unsigned msgUserID, MetaFileHandle& outFileInode,
 	 bool isSecondary);
 
 
@@ -18,7 +18,7 @@ class MsgHelperOpen
       MsgHelperOpen() {}
 
       static FhgfsOpsErr openMetaFile(EntryInfo* entryInfo,
-         unsigned accessFlags, MetaFileHandle& outOpenInode);
+         unsigned accessFlags, bool bypassAccessCheck, MetaFileHandle& outOpenInode);
       static void openMetaFileCompensate(EntryInfo* entryInfo,
          MetaFileHandle inode, unsigned accessFlags);
 

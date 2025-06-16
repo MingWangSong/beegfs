@@ -150,6 +150,7 @@ static inline bool Config_getSysXAttrsEnabled(Config* this);
 static inline CheckCapabilities Config_getSysXAttrsCheckCapabilities (Config* this);
 static inline bool Config_getSysACLsEnabled(Config* this);
 static inline bool Config_getSysXAttrsImplicitlyEnabled(Config* this);
+static inline bool Config_getSysBypassFileAccessCheckOnMeta(Config* this);
 
 static inline bool Config_getQuotaEnabled(Config* this);
 static inline char* Config_getConnMessagingTimeouts(Config* this);
@@ -302,6 +303,7 @@ struct Config
                                         // but have been enabled by __Config_initImplicitVals
                                         // because ACLs are enabled in the config and XAs are needed
                                         // to store the ACLs.
+   bool     sysBypassFileAccessCheckOnMeta; // bypass file access check on meta server
 
    bool     quotaEnabled;
    enum EventLogMask eventLogMask;
@@ -706,6 +708,11 @@ bool Config_getSysACLsEnabled(Config* this)
 bool Config_getSysXAttrsImplicitlyEnabled(Config* this)
 {
    return this->sysXAttrsImplicitlyEnabled;
+}
+
+bool Config_getSysBypassFileAccessCheckOnMeta(Config* this)
+{
+    return this->sysBypassFileAccessCheckOnMeta;
 }
 
 bool Config_getQuotaEnabled(Config* this)

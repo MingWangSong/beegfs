@@ -97,7 +97,8 @@ FhgfsOpsErr MsgHelperClose::closeSessionFile(const NumNodeID sessionID,
 
       *outAccessFlags = OPENFILE_ACCESS_READWRITE;
 
-      closeRes = metaStore->openFile(entryInfo, *outAccessFlags, outCloseInode);
+      bool bypassAccessCheck = false; // Enforce regular file access restrictions
+      closeRes = metaStore->openFile(entryInfo, *outAccessFlags, bypassAccessCheck, outCloseInode);
    }
    else
    { // sessionFile exists
@@ -277,7 +278,7 @@ FhgfsOpsErr MsgHelperClose::closeChunkFileParallel(const NumNodeID sessionID,
 
    size_t numTargetWorksHint = (maxUsedNodeIndex < 0) ? 0 : (maxUsedNodeIndex+1);
    size_t numTargetWorks = BEEGFS_MIN(numTargetWorksHint, targetIDs->size() );
-   
+
    DynamicFileAttribsVec dynAttribsVec(targetIDs->size() );
 
    FhgfsOpsErr retVal = FhgfsOpsErr_SUCCESS;

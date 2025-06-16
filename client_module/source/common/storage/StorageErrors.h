@@ -64,6 +64,7 @@ enum FhgfsOpsErr
    FhgfsOpsErr_TOOLONG                 =    30, // corresponds to E2BIG (needed for xattrs)
    FhgfsOpsErr_METAVERSIONMISMATCH     =    31, // metadata versions do not match, needed for cache invalidation
    FhgfsOpsErr_INODELOCKED             =    32, // inode is locked, needed for GlobalInodeLock store
+   FhgfsOpsErr_FILEACCESS_DENIED       =    33, // file access denied due to current file state restrictions
 };
 typedef enum FhgfsOpsErr FhgfsOpsErr;
 

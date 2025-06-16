@@ -1,13 +1,13 @@
 #pragma once
 
 #include <net/message/MirroredMessage.h>
-#include <common/net/message/storage/attribs/SetFileDataStateMsg.h>
-#include <common/net/message/storage/attribs/SetFileDataStateRespMsg.h>
+#include <common/net/message/storage/attribs/SetFileStateMsg.h>
+#include <common/net/message/storage/attribs/SetFileStateRespMsg.h>
 
-class SetFileDataStateMsgEx : public MirroredMessage<SetFileDataStateMsg, FileIDLock>
+class SetFileStateMsgEx : public MirroredMessage<SetFileStateMsg, FileIDLock>
 {
    public:
-      typedef ErrorCodeResponseState<SetFileDataStateRespMsg, NETMSGTYPE_SetFileDataState> ResponseState;
+      typedef ErrorCodeResponseState<SetFileStateRespMsg, NETMSGTYPE_SetFileState> ResponseState;
 
       virtual bool processIncoming(ResponseContext& ctx) override;
 
@@ -23,8 +23,8 @@ class SetFileDataStateMsgEx : public MirroredMessage<SetFileDataStateMsg, FileID
 
       FhgfsOpsErr processSecondaryResponse(NetMessage& resp) override
       {
-         return (FhgfsOpsErr) static_cast<SetFileDataStateRespMsg&>(resp).getValue();
+         return (FhgfsOpsErr) static_cast<SetFileStateRespMsg&>(resp).getValue();
       }
 
-      const char* mirrorLogContext() const override { return "SetFileDataStateMsgEx/forward"; }
+      const char* mirrorLogContext() const override { return "SetFileStateMsgEx/forward"; }
 };

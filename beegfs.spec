@@ -4,7 +4,7 @@
 %define CLIENT_DIR /opt/beegfs/src/client/client_module_%{BEEGFS_MAJOR_VERSION}
 %define CLIENT_COMPAT_DIR /opt/beegfs/src/client/client_compat_module_%{BEEGFS_MAJOR_VERSION}
 
-%define is_sles %(test -f /etc/SUSEConnect && echo 1 || echo 0)
+%define is_sles %(test -f /etc/os-release && grep -q "openSUSE" /etc/os-release || test -f /etc/SUSEConnect && echo 1 || echo 0)
 
 %if %is_sles
 %define distver %(release="`rpm -qf --queryformat='%%{VERSION}' /etc/os-release 2> /dev/null | tr . : | sed s/:.*$//g`" ; if test $? != 0 ; then release="" ; fi ; echo "$release")
@@ -226,8 +226,10 @@ echo beegfs-%{BEEGFS_MAJOR_VERSION} | tr -d . > ${RPM_BUILD_ROOT}/%{CLIENT_COMPA
 
 # we use the redhat script for all rpm distros, as we now provide our own
 # daemon() and killproc() function library (derived from redhat)
-install -D client_module/build/dist/etc/init.d/beegfs-client.init ${RPM_BUILD_ROOT}/etc/init.d/beegfs-client
-
+install -D client_module/build/dist/sbin/beegfs-client.init ${RPM_BUILD_ROOT}/opt/beegfs/sbin/beegfs-client
+%if !%is_sles
+ln -s /opt/beegfs/sbin/beegfs-client ${RPM_BUILD_ROOT}/etc/init.d/beegfs-client
+%endif
 #install systemd unit description
 install -D -m644 client_module/build/dist/usr/lib/systemd/system/beegfs-client.service \
    ${RPM_BUILD_ROOT}/usr/lib/systemd/system/beegfs-client.service
@@ -507,7 +509,10 @@ touch /var/lib/beegfs/client/force-auto-build
 %dir /etc/beegfs/lib/
 %config(noreplace) /etc/beegfs/lib/init-multi-mode.beegfs-client
 %config(noreplace) /etc/default/beegfs-client
+/opt/beegfs/sbin/beegfs-client
+%if !%is_sles
 /etc/init.d/beegfs-client
+%endif
 /opt/beegfs/sbin/beegfs-setup-client
 /sbin/mount.beegfs
 /usr/lib/systemd/system/beegfs-client.service

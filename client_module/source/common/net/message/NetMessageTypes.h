@@ -170,8 +170,8 @@
 #define NETMSGTYPE_ChunkBalanceResp                2128
 #define NETMSGTYPE_StripePatternUpdate             2129
 #define NETMSGTYPE_StripePatternUpdateResp         2130
-#define NETMSGTYPE_SetFileDataState                2131
-#define NETMSGTYPE_SetFileDataStateResp            2132
+#define NETMSGTYPE_SetFileState                    2131
+#define NETMSGTYPE_SetFileStateResp                2132
 
 // session messages
 #define NETMSGTYPE_OpenFile                        3001

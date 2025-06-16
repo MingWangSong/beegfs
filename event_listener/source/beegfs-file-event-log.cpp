@@ -123,6 +123,8 @@ std::string to_string(const FileEventType& fileEvent)
          return "OpenReadWrite";
       case FileEventType::LAST_WRITER_CLOSED:
          return "LastWriterClosed";
+      case FileEventType::OPEN_BLOCKED:
+         return "OpenBlocked";
    }
    return "";
 }
@@ -137,7 +139,7 @@ std::pair<PacketReadErrorCode, packet> read_packet_from_raw(void * data, size_t 
    if (res.formatVersion != BEEGFS_EVENTLOG_FORMAT_VERSION)
       return { PacketReadErrorCode::VersionMismatch, {} };
 
-   reader >> res.eventFlags 
+   reader >> res.eventFlags
           >> res.linkCount
           >> res.type
           >> res.entryId

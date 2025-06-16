@@ -746,7 +746,7 @@ int FhgfsOps_aclChmod(struct iattr* iattr, struct dentry* dentry)
 {
 #if defined(KERNEL_HAS_SET_ACL) || defined(KERNEL_HAS_SET_ACL_DENTRY)
    if (iattr->ia_valid & ATTR_MODE)
-      return os_posix_acl_chmod(dentry->d_inode, iattr->ia_mode);
+      return os_posix_acl_chmod(dentry, iattr->ia_mode);
    else
       return 0;
 #else
@@ -913,7 +913,15 @@ int FhgfsOps_setattr(struct dentry* dentry, struct iattr* iattr)
 
 #ifdef KERNEL_HAS_GET_ACL
          if (Config_getSysACLsEnabled(cfg) )
-            FhgfsOps_aclChmod(iattr, dentry);
+         {
+            int aclRes = FhgfsOps_aclChmod(iattr, dentry);
+            if(aclRes < 0)
+            {
+               Logger_logFormatted(log, Log_ERR, logContext, "ACL chmod failed for '%s' (mode: 0%o), error: %d",
+                  dentry->d_name.name, iattr->ia_mode, aclRes);
+               return aclRes;
+            }
+         }
 #endif // KERNEL_HAS_GET_ACL
       }
 

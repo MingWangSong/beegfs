@@ -464,6 +464,11 @@ check_function \
    KERNEL_HAS_INODE_GET_SET_CTIME_MTIME_ATIME \
    linux/fs.h
 
+# From Linux kernel 6.12 onward, unaligned.h has been moved from <asm/> to <linux/> include path
+
+check_header \
+   linux/unaligned.h \
+   KERNEL_HAS_LINUX_UNALIGNED_H
 
 # we have to communicate with the calling makefile somehow. since we can't really use the return
 # code of this script, we'll echo a special string at the end of our output for the caller to

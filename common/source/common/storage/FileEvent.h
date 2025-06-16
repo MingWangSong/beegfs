@@ -19,7 +19,8 @@ enum class FileEventType
    OPEN_READ = 13,
    OPEN_WRITE = 14,
    OPEN_READ_WRITE = 15,
-   LAST_WRITER_CLOSED = 16
+   LAST_WRITER_CLOSED = 16,
+   OPEN_BLOCKED = 17,
 };
 
 template<>

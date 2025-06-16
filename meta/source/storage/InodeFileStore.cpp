@@ -74,7 +74,7 @@ FileInodeRes InodeFileStore::referenceFileInode(EntryInfo* entryInfo, bool loadF
 
    if (checkLockStore) // check bool for internal lock store
       return referenceFileInodeUnlocked(entryInfo, loadFromDisk);
-   else 
+   else
       return referenceFileInodeUnlockedIgnoreLocking(entryInfo, loadFromDisk);
 }
 
@@ -94,12 +94,12 @@ FileInodeRes InodeFileStore::referenceFileInodeUnlocked(EntryInfo* entryInfo, bo
       App* app = Program::getApp();
       MetaStore* metaStore = app->getMetaStore();
       GlobalInodeLockStore* inodeLockStore = metaStore->getInodeLockStore();
-      if (!inodeLockStore->lookupFileInode(entryInfo)) 
+      if (!inodeLockStore->lookupFileInode(entryInfo))
       //not in globalInodeLockStore, try to load
       {
          loadAndInsertFileInodeUnlocked(entryInfo, iter);
       }
-      else 
+      else
       {  //inode is in GlobalInodeLockStore
          retVal =  FhgfsOpsErr_INODELOCKED;
       }
@@ -107,7 +107,7 @@ FileInodeRes InodeFileStore::referenceFileInodeUnlocked(EntryInfo* entryInfo, bo
    if(iter != this->inodes.end() )
    { // outInode exists
       inode = referenceFileInodeMapIterUnlocked(iter);
-      retVal = FhgfsOpsErr_SUCCESS; 
+      retVal = FhgfsOpsErr_SUCCESS;
       return {inode, retVal};
    }
 
@@ -118,7 +118,7 @@ FileInodeRes InodeFileStore::referenceFileInodeUnlocked(EntryInfo* entryInfo, bo
  * Note: this->rwlock needs to be write locked
  * Note: We do not add a reference if isRename == true, but we set an exclusive flag and just
  *       return an unreferenced inode, which can be deleted anytime.
- * Note: Variation of referenceFileInodeUnlocked(). 
+ * Note: Variation of referenceFileInodeUnlocked().
  *       Bypasses the check for locked files due to internal meta operations.
  */
 FileInodeRes InodeFileStore::referenceFileInodeUnlockedIgnoreLocking(EntryInfo* entryInfo, bool loadFromDisk)
@@ -129,14 +129,14 @@ FileInodeRes InodeFileStore::referenceFileInodeUnlockedIgnoreLocking(EntryInfo* 
    InodeMapIter iter =  this->inodes.find(entryInfo->getEntryID() );
 
    if(iter == this->inodes.end() && loadFromDisk)
-   { // not in map yet => try to load it      
+   { // not in map yet => try to load it
       loadAndInsertFileInodeUnlocked(entryInfo, iter);
    }
-   
+
    if(iter != this->inodes.end() )
    { // outInode exists
       FileInodeResPair.first = referenceFileInodeMapIterUnlocked(iter);
-      FileInodeResPair.second = FhgfsOpsErr_SUCCESS; 
+      FileInodeResPair.second = FhgfsOpsErr_SUCCESS;
       return FileInodeResPair;
    }
 
@@ -467,13 +467,21 @@ size_t InodeFileStore::getSize()
 }
 
 /**
+ * Opens a file and increments the session count if the file is in an accessible state.
+ *
+ * This function references the file inode, checks if the file's state allows the requested
+ * access type, and increments the appropriate session counter if access is permitted.
+ * If the file is in a locked state, the function returns an error.
+ *
  * Note: Open inodes are always also implicitly referenced.
  *
- * @param accessFlags OPENFILE_ACCESS_... flags
+ * @param entryInfo    entry info of the file to be opened
+ * @param accessFlags  OPENFILE_ACCESS_... flags
+ * @param outInode     Output parameter that will hold the referenced inode on success
  * @param loadFromDisk - true for access from DirInode, false for access from MetaStore
  */
 FhgfsOpsErr InodeFileStore::openFile(EntryInfo* entryInfo, unsigned accessFlags,
-   FileInode*& outInode, bool loadFromDisk)
+   FileInode*& outInode, bool loadFromDisk, bool bypassAccessCheck)
 {
    FhgfsOpsErr referenceRes;
    FileInodeRes FileInodeResPair = referenceFileInode(entryInfo, loadFromDisk, true);
@@ -483,7 +491,13 @@ FhgfsOpsErr InodeFileStore::openFile(EntryInfo* entryInfo, unsigned accessFlags,
    if (!outInode)
       return referenceRes;
 
-   outInode->incNumSessions(accessFlags);
+   FhgfsOpsErr openRes = outInode->checkAccessAndOpen(accessFlags, bypassAccessCheck);
+   if (openRes != FhgfsOpsErr_SUCCESS)
+   {
+      releaseFileInode(outInode);
+      outInode = nullptr;
+      return openRes;
+   }
 
    return referenceRes;
 }

@@ -774,6 +774,9 @@ FhgfsOpsErr FhgfsOpsRemoting_openfile(const EntryInfo* entryInfo, RemotingIOInfo
    if(Config_getQuotaEnabled(cfg) )
       NetMessage_addMsgHeaderFeatureFlag((NetMessage*)&requestMsg, OPENFILEMSG_FLAG_USE_QUOTA);
 
+   if(Config_getSysBypassFileAccessCheckOnMeta(cfg))
+      NetMessage_addMsgHeaderFeatureFlag((NetMessage*)&requestMsg, OPENFILEMSG_FLAG_BYPASS_ACCESS_CHECK);
+
    RequestResponseArgs_prepare(&rrArgs, NULL, (NetMessage*)&requestMsg, NETMSGTYPE_OpenFileResp);
 
    // communicate

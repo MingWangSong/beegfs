@@ -6,9 +6,9 @@
 #include <common/net/message/NetMessage.h>
 
 
-#define OPENFILEMSG_FLAG_USE_QUOTA          1 /* if the message contains quota informations */
-#define OPENFILEMSG_FLAG_HAS_EVENT          2 /* contains file event logging information */
-
+#define OPENFILEMSG_FLAG_USE_QUOTA           1 /* if the message contains quota informations */
+#define OPENFILEMSG_FLAG_HAS_EVENT           2 /* contains file event logging information */
+#define OPENFILEMSG_FLAG_BYPASS_ACCESS_CHECK 4 /* bypass file access checks on metadata server */
 
 struct OpenFileMsg;
 typedef struct OpenFileMsg OpenFileMsg;

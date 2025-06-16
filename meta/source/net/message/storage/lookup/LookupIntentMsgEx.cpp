@@ -322,9 +322,9 @@ FhgfsOpsErr LookupIntentMsgEx::revalidate(EntryInfo* diskEntryInfo, uint32_t met
    if ( (diskEntryInfo->getEntryID()     == clientEntryInfo->getEntryID() ) &&
         (diskEntryInfo->getOwnerNodeID() == clientEntryInfo->getOwnerNodeID() ) )
       {
-      if (clientMetaVersion != metaVersion) 
+      if (clientMetaVersion != metaVersion)
          return FhgfsOpsErr_METAVERSIONMISMATCH;
-      
+
       return FhgfsOpsErr_SUCCESS;
       }
 
@@ -473,8 +473,8 @@ FhgfsOpsErr LookupIntentMsgEx::open(EntryInfo* entryInfo, std::string* outFileHa
    bool useQuota = isMsgHeaderFeatureFlagSet(LOOKUPINTENTMSG_FLAG_USE_QUOTA);
 
    FhgfsOpsErr openRes = MsgHelperOpen::openFile(
-      entryInfo, getAccessFlags(), useQuota, getMsgHeaderUserID(), inode,
-      isSecondary);
+      entryInfo, getAccessFlags(), useQuota, /* bypassFileAccessCheck */ false,
+      getMsgHeaderUserID(), inode, isSecondary);
 
    if (openRes == FhgfsOpsErr_SUCCESS && shouldFixTimestamps())
       fixInodeTimestamp(*inode, fileTimestamps, entryInfo);

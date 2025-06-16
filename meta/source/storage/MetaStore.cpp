@@ -58,11 +58,11 @@ void MetaStore::releaseDirUnlocked(const std::string& dirID)
  * Reference a file. It is unknown if this file is already referenced in memory or needs to be
  * loaded. Therefore a complete entryInfo is required.
  */
-MetaFileHandleRes MetaStore::referenceFile(EntryInfo* entryInfo)
+MetaFileHandleRes MetaStore::referenceFile(EntryInfo* entryInfo, bool checkLockStore)
 {
    UniqueRWLock lock(rwlock, SafeRWLock_READ);
 
-   auto [inode, referenceRes] = referenceFileUnlocked(entryInfo);
+   auto [inode, referenceRes] = referenceFileUnlocked(entryInfo, checkLockStore);
    if (unlikely(!inode))
       return {MetaFileHandle(), referenceRes};
 
@@ -103,17 +103,17 @@ MetaFileHandleRes MetaStore::referenceFile(EntryInfo* entryInfo)
    releaseDirUnlocked(dir->getID());
 
    lock.unlock(); // U N L O C K
-   return tryReferenceFileWriteLocked(entryInfo);
+   return tryReferenceFileWriteLocked(entryInfo, checkLockStore);
 }
 
 /**
  * See referenceFileInode() for details. We already have the lock here.
  */
-MetaFileHandleRes MetaStore::referenceFileUnlocked(EntryInfo* entryInfo)
+MetaFileHandleRes MetaStore::referenceFileUnlocked(EntryInfo* entryInfo, bool checkLockStore)
 {
    // load inode into global store from disk if it is nonInlined
    bool loadFromDisk = !entryInfo->getIsInlined();
-   auto [inode, referenceRes] = this->fileStore.referenceFileInode(entryInfo, loadFromDisk, true);
+   auto [inode, referenceRes] = this->fileStore.referenceFileInode(entryInfo, loadFromDisk, checkLockStore);
    if (inode)
       return {MetaFileHandle(inode, nullptr), referenceRes};
 
@@ -127,7 +127,7 @@ MetaFileHandleRes MetaStore::referenceFileUnlocked(EntryInfo* entryInfo)
       return {MetaFileHandle(), FhgfsOpsErr_PATHNOTEXISTS};
 
    UniqueRWLock subDirLock(subDir->rwlock, SafeRWLock_READ);
-   std::tie(inode, referenceRes)  = subDir->fileStore.referenceFileInode(entryInfo, true, true);
+   std::tie(inode, referenceRes)  = subDir->fileStore.referenceFileInode(entryInfo, true, checkLockStore);
    if (!inode)
    {
       subDirLock.unlock();
@@ -154,17 +154,17 @@ MetaFileHandleRes MetaStore::referenceFileUnlocked(EntryInfo* entryInfo)
  * Note: Callers must release FileInode before releasing DirInode! Use this method with care!
  *
  */
-MetaFileHandleRes MetaStore::referenceFileUnlocked(DirInode& subDir, EntryInfo* entryInfo)
+MetaFileHandleRes MetaStore::referenceFileUnlocked(DirInode& subDir, EntryInfo* entryInfo, bool checkLockStore)
 {
    // load inode into global store from disk if it is nonInlined
    bool loadFromDisk = !entryInfo->getIsInlined();
-   auto [inode, referenceRes] = this->fileStore.referenceFileInode(entryInfo, loadFromDisk, true);
+   auto [inode, referenceRes] = this->fileStore.referenceFileInode(entryInfo, loadFromDisk, checkLockStore);
    if (inode)
       return {MetaFileHandle(inode, nullptr), referenceRes};
 
    // not in global map, now per directory and also try to load from disk
-   std::tie(inode, referenceRes) =  subDir.fileStore.referenceFileInode(entryInfo, true, true);
-   
+   std::tie(inode, referenceRes) =  subDir.fileStore.referenceFileInode(entryInfo, true, checkLockStore);
+
    return {MetaFileHandle(inode, nullptr), referenceRes};
 }
 
@@ -242,7 +242,7 @@ MetaFileHandle MetaStore::referenceLoadedFileUnlocked(DirInode& subDir, const st
  * @param entryInfo The entry information of the file.
  * @return A handle to the file inode if successful, otherwise an empty handle.
  */
-MetaFileHandleRes MetaStore::tryReferenceFileWriteLocked(EntryInfo* entryInfo)
+MetaFileHandleRes MetaStore::tryReferenceFileWriteLocked(EntryInfo* entryInfo, bool checkLockStore)
 {
    UniqueRWLock lock(rwlock, SafeRWLock_WRITE);
 
@@ -252,8 +252,8 @@ MetaFileHandleRes MetaStore::tryReferenceFileWriteLocked(EntryInfo* entryInfo)
          entryInfo->getIsBuddyMirrored(), entryInfo->getEntryID());
    }
 
-   auto [inode, referenceRes] = this->fileStore.referenceFileInode(entryInfo, true, true);
-   
+   auto [inode, referenceRes] = this->fileStore.referenceFileInode(entryInfo, true, checkLockStore);
+
    if (inode)
       return {MetaFileHandle(inode, nullptr), referenceRes};
 
@@ -266,10 +266,12 @@ MetaFileHandleRes MetaStore::tryReferenceFileWriteLocked(EntryInfo* entryInfo)
  *
  * @param entryInfo The entry information of the file.
  * @param accessFlags The access flags for opening the file.
+ * @param bypassAccessCheck Whether to bypass access checks.
  * @param outInode Output parameter for the file inode handle.
  * @return Error code indicating the result of the operation.
  */
-FhgfsOpsErr MetaStore::tryOpenFileWriteLocked(EntryInfo* entryInfo, unsigned accessFlags, MetaFileHandle& outInode)
+FhgfsOpsErr MetaStore::tryOpenFileWriteLocked(EntryInfo* entryInfo, unsigned accessFlags,
+   bool bypassAccessCheck, MetaFileHandle& outInode)
 {
    UniqueRWLock lock(rwlock, SafeRWLock_WRITE);
 
@@ -280,7 +282,8 @@ FhgfsOpsErr MetaStore::tryOpenFileWriteLocked(EntryInfo* entryInfo, unsigned acc
    }
 
    FileInode* inode;
-   auto openRes = this->fileStore.openFile(entryInfo, accessFlags, inode, true);
+   auto openRes = this->fileStore.openFile(entryInfo, accessFlags, inode,
+      /* loadFromDisk */ true, bypassAccessCheck);
    outInode = {inode, nullptr};
    return openRes;
 }
@@ -469,7 +472,7 @@ bool MetaStore::moveReferenceToMetaFileStoreUnlocked(const std::string& parentEn
 /**
  * @param accessFlags OPENFILE_ACCESS_... flags
  */
-FhgfsOpsErr MetaStore::openFile(EntryInfo* entryInfo, unsigned accessFlags,
+FhgfsOpsErr MetaStore::openFile(EntryInfo* entryInfo, unsigned accessFlags, bool bypassAccessCheck,
    MetaFileHandle& outInode, bool checkDisposalFirst)
 {
    UniqueRWLock lock(rwlock, SafeRWLock_READ);
@@ -483,7 +486,8 @@ FhgfsOpsErr MetaStore::openFile(EntryInfo* entryInfo, unsigned accessFlags,
       eiDisposal.setParentEntryID(META_DISPOSALDIR_ID_STR);
 
       FileInode* inode;
-      auto openRes = this->fileStore.openFile(&eiDisposal, accessFlags, inode, true);
+      auto openRes = this->fileStore.openFile(&eiDisposal, accessFlags, inode,
+                        /* loadFromDisk */ true, bypassAccessCheck);
       if (inode)
       {
          outInode = {inode, nullptr};
@@ -496,7 +500,8 @@ FhgfsOpsErr MetaStore::openFile(EntryInfo* entryInfo, unsigned accessFlags,
    if (this->fileStore.isInStore(entryInfo->getEntryID()))
    {
       FileInode* inode;
-      auto openRes = this->fileStore.openFile(entryInfo, accessFlags, inode, false);
+      auto openRes = this->fileStore.openFile(entryInfo, accessFlags, inode,
+         /* loadFromDisk */ false, bypassAccessCheck);
       outInode = {inode, nullptr};
       return openRes;
    }
@@ -511,7 +516,8 @@ FhgfsOpsErr MetaStore::openFile(EntryInfo* entryInfo, unsigned accessFlags,
    if (!entryInfo->getIsInlined())
    {
       FileInode* inode;
-      auto openRes = this->fileStore.openFile(entryInfo, accessFlags, inode, true);
+      auto openRes = this->fileStore.openFile(entryInfo, accessFlags, inode,
+         /* loadFromDisk */ true, bypassAccessCheck);
       outInode = {inode, nullptr};
       return openRes;
    }
@@ -528,7 +534,8 @@ FhgfsOpsErr MetaStore::openFile(EntryInfo* entryInfo, unsigned accessFlags,
    UniqueRWLock subDirLock(subDir->rwlock, SafeRWLock_READ);
 
    FileInode* inode;
-   FhgfsOpsErr retVal = subDir->fileStore.openFile(entryInfo, accessFlags, inode, true);
+   FhgfsOpsErr retVal = subDir->fileStore.openFile(entryInfo, accessFlags, inode,
+      /* loadFromDisk */ true, bypassAccessCheck);
    outInode = {inode, subDir};
 
    if (!outInode)
@@ -569,7 +576,7 @@ FhgfsOpsErr MetaStore::openFile(EntryInfo* entryInfo, unsigned accessFlags,
    releaseDirUnlocked(parentEntryID);
 
    lock.unlock(); // U N L O C K
-   return tryOpenFileWriteLocked(entryInfo, accessFlags, outInode);
+   return tryOpenFileWriteLocked(entryInfo, accessFlags, bypassAccessCheck, outInode);
 }
 
 /**
@@ -2261,7 +2268,7 @@ FhgfsOpsErr MetaStore::deinlineFileInode(DirInode& parentDir, EntryInfo* entryIn
    // b) Release the file inode reference
    auto cleanupOnError = [this, &fileInode = fileInode, &entryInfo = entryInfo, &parentDir= parentDir](FhgfsOpsErr errCode)  {
       FileInode::unlinkStoredInodeUnlocked(entryInfo->getEntryID(), entryInfo->getIsBuddyMirrored());
-      releaseFileUnlocked(parentDir, fileInode); 
+      releaseFileUnlocked(parentDir, fileInode);
       return errCode;
    };
 
@@ -2580,6 +2587,71 @@ FhgfsOpsErr MetaStore::unlinkRawMetadata(const Path& path)
 
    LOG(GENERAL, DEBUG, "Error unlinking metadata file", path, sysErr);
    return FhgfsOpsErr_INTERNAL;
+}
+
+/**
+ * Sets the state of a file and persists it to disk.
+ * This method locks inode in GlobalInodeLockStore to prevent concurrent operations,
+ * verifies the state transition is allowed based on active sessions, and updates its state.
+ *
+ * @param entryInfo The entry information of the file to modify
+ * @param state The new state to set for the file
+ * @return FhgfsOpsErr_SUCCESS if state was successfully updated to disk
+ *         FhgfsOpsErr_INODELOCKED if file is locked in global lock store
+ *         FhgfsOpsErr_INUSE if the requested state transition would affect active sessions
+ *         FhgfsOpsErr_PATHNOTEXISTS if the file or parent directory doesn't exist
+ *         FhgfsOpsErr_INTERNAL for other errors
+ */
+FhgfsOpsErr MetaStore::setFileState(EntryInfo* entryInfo, const FileState& state)
+{
+   const char* logContext = "MetaStore (set file state)";
+   UniqueRWLock metaLock(rwlock, SafeRWLock_READ);
+
+   // Add inode to global lock store for exclusive access
+   GlobalInodeLockStore* lockStore = this->getInodeLockStore();
+   if (!lockStore->insertFileInode(entryInfo))
+   {
+      LogContext(logContext).log(Log_DEBUG, "Inode is locked in global lock store; "
+         "state update rejected. EntryID: " + entryInfo->getEntryID());
+      return FhgfsOpsErr_INODELOCKED;
+   }
+
+   DirInode* parentDir = referenceDirUnlocked(entryInfo->getParentEntryID(),
+                                             entryInfo->getIsBuddyMirrored(), false);
+   if (unlikely(!parentDir))
+   {
+      lockStore->releaseFileInode(entryInfo->getEntryID());
+      return FhgfsOpsErr_PATHNOTEXISTS;
+   }
+
+   // Bypass lock store checks since GlobalInodeLockStore ensures exclusivity.
+   // A narrow race window exists where another thread may reference the inode
+   // between our call to insertFileInode() and referenceFileUnlocked()
+   // (via concurrent operations like open(), stat(), etc.). Such cases are now
+   // handled directly by FileInode::checkAccessFlagTransition() logic, which
+   // verifies if the state change is allowed based on active sessions.
+   // Read-only operations may transiently reference the inode but don't increment
+   // session counters and therefore don't block state transitions.
+   auto [inode, refRes] = referenceFileUnlocked(*parentDir, entryInfo, /* checkLockStore */ false);
+   if (unlikely(!inode))
+   {
+      releaseDirUnlocked(parentDir->getID());
+      lockStore->releaseFileInode(entryInfo->getEntryID());
+      return refRes;
+   }
+
+   FhgfsOpsErr setRes = inode->setFileState(entryInfo, state);
+   if (setRes != FhgfsOpsErr_SUCCESS)
+   {
+      LogContext(logContext).log(Log_DEBUG, "Failed to set file state. EntryID: " +
+         entryInfo->getEntryID() + ", FileName: " + entryInfo->getFileName());
+   }
+
+   // Clean up resources in reverse order of acquisition
+   releaseFileUnlocked(*parentDir, inode);
+   releaseDirUnlocked(parentDir->getID());
+   lockStore->releaseFileInode(entryInfo->getEntryID());
+   return setRes;
 }
 
 void MetaStore::invalidateMirroredDirInodes()
