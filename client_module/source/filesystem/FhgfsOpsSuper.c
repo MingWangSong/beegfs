@@ -30,32 +30,48 @@ static void __FhgfsOps_destructFsInfo(struct super_block* sb);
  * setting /sys/class/bdi/fhgfs-${number}/read_ahead_kb */
 #define BEEGFS_DEFAULT_READAHEAD_PAGES BEEGFS_MAX_PAGE_LIST_SIZE
 
+/**
+ * 文件系统类型结构体，用于注册BeeGFS文件系统到Linux内核。
+ * 这是连接BeeGFS与Linux VFS层的主要入口点。
+ */
 static struct file_system_type fhgfs_fs_type =
 {
-   .name       = BEEGFS_MODULE_NAME_STR,
-   .owner      = THIS_MODULE,
-   .kill_sb    = FhgfsOps_killSB,
+   .name       = BEEGFS_MODULE_NAME_STR,  // 文件系统名称
+   .owner      = THIS_MODULE,            // 所有者为当前模块
+   .kill_sb    = FhgfsOps_killSB,        // 卸载文件系统时的清理函数
    //.fs_flags   = FS_BINARY_MOUNTDATA, // not required currently
 
 #ifdef KERNEL_HAS_GET_SB_NODEV
-   .get_sb     = FhgfsOps_getSB,
+   .get_sb     = FhgfsOps_getSB,         // 旧内核版本的挂载函数
 #else
-   .mount      = FhgfsOps_mount, // basically the same thing as get_sb before
+   .mount      = FhgfsOps_mount,         // 新内核版本的挂载函数
 #endif
 };
 
+/**
+ * 超级块操作结构体，定义了VFS与BeeGFS文件系统交互的关键回调函数。
+ * 这些函数处理文件系统级别的操作，如获取文件系统统计信息、
+ * 分配/销毁inode、卸载超级块等。
+ */
 static struct super_operations fhgfs_super_ops =
 {
-   .statfs        = FhgfsOps_statfs,
-   .alloc_inode   = FhgfsOps_alloc_inode,
-   .destroy_inode = FhgfsOps_destroy_inode,
-   .drop_inode    = generic_drop_inode,
-   .put_super     = FhgfsOps_putSuper,
-   .show_options  = FhgfsOps_showOptions,
+   .statfs        = FhgfsOps_statfs,        // 获取文件系统统计信息
+   .alloc_inode   = FhgfsOps_alloc_inode,   // 分配新的inode
+   .destroy_inode = FhgfsOps_destroy_inode, // 销毁inode
+   .drop_inode    = generic_drop_inode,     // 减少inode引用计数
+   .put_super     = FhgfsOps_putSuper,      // 卸载文件系统时清理超级块
+   .show_options  = FhgfsOps_showOptions,   // 显示挂载选项
 };
 
 /**
- * Creates and initializes the per-mount application object.
+ * 创建并初始化每个挂载点的应用程序对象。
+ * 
+ * 这个函数解析挂载选项，创建并初始化BeeGFS客户端应用程序实例，
+ * 设置与服务器的连接，启动各种组件（如数据报监听器、同步器等）。
+ *
+ * @param sb 超级块结构体指针
+ * @param rawMountOptions 原始挂载选项字符串
+ * @return 0表示成功，非零表示错误代码
  */
 int __FhgfsOps_initApp(struct super_block* sb, char* rawMountOptions)
 {
@@ -64,7 +80,7 @@ int __FhgfsOps_initApp(struct super_block* sb, char* rawMountOptions)
    App* app;
    int appRes;
 
-   // create mountConfig (parse from mount options)
+   // 创建挂载配置对象并从挂载选项解析配置
    mountConfig = MountConfig_construct();
 
    parseRes = MountConfig_parseFromRawOptions(mountConfig, rawMountOptions);
@@ -76,13 +92,15 @@ int __FhgfsOps_initApp(struct super_block* sb, char* rawMountOptions)
 
    //printk_fhgfs(KERN_INFO, "Initializing App...\n"); // debug in
 
+   // 获取应用程序对象并初始化
    app = FhgfsOps_getApp(sb);
    App_init(app, mountConfig);
 
+   // 运行应用程序，建立与服务器的连接
    appRes = App_run(app);
 
    if(appRes != APPCODE_NO_ERROR)
-   { // error occurred => clean up
+   { // 发生错误时进行清理
       printk_fhgfs_debug(KERN_INFO, "Stopping App...\n");
 
       App_stop(app);
@@ -96,13 +114,19 @@ int __FhgfsOps_initApp(struct super_block* sb, char* rawMountOptions)
       return appRes;
    }
 
+   // 创建procfs条目，提供状态信息和配置接口
    ProcFs_createEntries(app);
 
    return appRes;
 }
 
 /**
- * Stops and destroys the per-mount application object.
+ * 停止并销毁每个挂载点的应用程序对象。
+ * 
+ * 在文件系统卸载时调用，负责关闭与服务器的连接，
+ * 停止所有组件，并释放资源。
+ *
+ * @param app 要停止和销毁的应用程序对象
  */
 void __FhgfsOps_uninitApp(App* app)
 {
@@ -117,20 +141,39 @@ void __FhgfsOps_uninitApp(App* app)
    App_uninit(app);
 }
 
+/**
+ * 向Linux内核注册BeeGFS文件系统类型。
+ * 
+ * 在模块加载时调用，使Linux能够识别并挂载BeeGFS文件系统。
+ *
+ * @return 0表示成功，非零表示错误代码
+ */
 int FhgfsOps_registerFilesystem(void)
 {
    return register_filesystem(&fhgfs_fs_type);
 }
 
+/**
+ * 从Linux内核注销BeeGFS文件系统类型。
+ *
+ * 在模块卸载时调用，清理文件系统注册。
+ *
+ * @return 0表示成功，非零表示错误代码
+ */
 int FhgfsOps_unregisterFilesystem(void)
 {
    return unregister_filesystem(&fhgfs_fs_type);
 }
 
 /**
- * Initialize sb->s_fs_info
+ * 初始化超级块的文件系统信息。
+ * 
+ * 分配并填充BeeGFS特定的超级块信息结构体，
+ * 初始化应用程序对象，设置BDI（backing device info）。
  *
- * @return 0 on success, negative linux error code otherwise
+ * @param sb 超级块结构体指针
+ * @param rawMountOptions 原始挂载选项
+ * @return 0表示成功，负值表示Linux错误代码
  */
 int __FhgfsOps_constructFsInfo(struct super_block* sb, void* rawMountOptions)
 {
@@ -139,13 +182,11 @@ int __FhgfsOps_constructFsInfo(struct super_block* sb, void* rawMountOptions)
    App* app;
    Logger* log;
 
-
-
 #if defined(KERNEL_HAS_SB_BDI) && !defined(KERNEL_HAS_SUPER_SETUP_BDI_NAME)
    struct backing_dev_info* bdi;
 #endif
 
-   // use kzalloc to also zero the bdi
+   // 使用kzalloc分配并初始化超级块信息结构
    FhgfsSuperBlockInfo* sbInfo = kzalloc(sizeof(FhgfsSuperBlockInfo), GFP_KERNEL);
    if (!sbInfo)
    {
@@ -156,6 +197,7 @@ int __FhgfsOps_constructFsInfo(struct super_block* sb, void* rawMountOptions)
 
    sb->s_fs_info = sbInfo;
 
+   // 初始化应用程序对象
    appRes = __FhgfsOps_initApp(sb, rawMountOptions);
    if(appRes)
    {
@@ -169,7 +211,7 @@ int __FhgfsOps_constructFsInfo(struct super_block* sb, void* rawMountOptions)
    IGNORE_UNUSED_VARIABLE(log);
 
 #if defined(KERNEL_HAS_SB_BDI)
-
+   // 设置backing device info (BDI)，处理页缓存和回写操作
    #if defined(KERNEL_HAS_SUPER_SETUP_BDI_NAME) && !defined(KERNEL_HAS_BDI_SETUP_AND_REGISTER)
    {
       static atomic_long_t bdi_seq = ATOMIC_LONG_INIT(0);
@@ -203,15 +245,13 @@ int __FhgfsOps_constructFsInfo(struct super_block* sb, void* rawMountOptions)
    }
 #endif
 
-   // set root inode attribs to uninit'ed
-
+   // 初始化根目录inode信息的状态
    FhgfsOps_setHasRootEntryInfo(sb, false);
    FhgfsOps_setIsRootInited(sb, false);
 
-
    printk_fhgfs(KERN_INFO, "BeeGFS mount ready.\n");
 
-   return 0; // all ok, res should be 0 here
+   return 0; // 成功，res应该为0
 
 outFreeSB:
    kfree(sbInfo);
@@ -221,11 +261,16 @@ outFreeSB:
 }
 
 /**
- * Unitialize the entire sb->s_fs_info object
+ * 清理超级块的文件系统信息。
+ * 
+ * 在卸载文件系统时调用，销毁应用程序对象，
+ * 释放BDI和其他资源。
+ * 
+ * @param sb 超级块结构体指针
  */
 void __FhgfsOps_destructFsInfo(struct super_block* sb)
 {
-   /* sb->s_fs_info might be NULL if __FhgfsOps_constructFsInfo() failed */
+   /* sb->s_fs_info在__FhgfsOps_constructFsInfo()失败时可能为NULL */
    if (sb->s_fs_info)
    {
       App* app = FhgfsOps_getApp(sb);
@@ -251,7 +296,16 @@ void __FhgfsOps_destructFsInfo(struct super_block* sb)
 }
 
 /**
- * Fill the file system superblock (vfs object)
+ * 填充文件系统超级块。
+ * 
+ * 当用户执行挂载命令时，VFS调用此函数初始化超级块，
+ * 设置各种文件系统参数，创建根inode和dentry。
+ * 这是文件系统挂载过程的核心。
+ *
+ * @param sb 超级块结构体指针
+ * @param rawMountOptions 原始挂载选项
+ * @param silent 是否静默操作（不打印错误信息）
+ * @return 0表示成功，负值表示Linux错误代码
  */
 int FhgfsOps_fillSuper(struct super_block* sb, void* rawMountOptions, int silent)
 {
@@ -265,37 +319,36 @@ int FhgfsOps_fillSuper(struct super_block* sb, void* rawMountOptions, int silent
 
    FhgfsIsizeHints iSizeHints;
 
-   // init per-mount app object
-
+   // 初始化每个挂载点的文件系统信息和应用程序对象
    if(__FhgfsOps_constructFsInfo(sb, rawMountOptions) )
       return -ECANCELED;
 
    app = FhgfsOps_getApp(sb);
    cfg = App_getConfig(app);
 
-   // set up super block data
-
-   sb->s_maxbytes = MAX_LFS_FILESIZE;
-   sb->s_blocksize = PAGE_SIZE;
-   sb->s_blocksize_bits = PAGE_SHIFT;
-   sb->s_magic = BEEGFS_MAGIC;
-   sb->s_op = &fhgfs_super_ops;
-   sb->s_time_gran = 1000000000; // granularity of c/m/atime in ns
+   // 设置超级块参数
+   sb->s_maxbytes = MAX_LFS_FILESIZE;   // 最大文件大小
+   sb->s_blocksize = PAGE_SIZE;         // 块大小
+   sb->s_blocksize_bits = PAGE_SHIFT;   // 块大小位数
+   sb->s_magic = BEEGFS_MAGIC;          // 文件系统魔数
+   sb->s_op = &fhgfs_super_ops;         // 超级块操作函数
+   sb->s_time_gran = 1000000000;        // 时间戳粒度（纳秒）
 #ifdef KERNEL_HAS_SB_NODIRATIME
-   sb->s_flags |= SB_NODIRATIME;
+   sb->s_flags |= SB_NODIRATIME;        // 不更新目录访问时间
 #else
    sb->s_flags |= MS_NODIRATIME;
 #endif
 
-   if (Config_getSysXAttrsEnabled(cfg ) )
-      sb->s_xattr = fhgfs_xattr_handlers_noacl; // handle only user xattrs
+   // 根据配置设置扩展属性和ACL支持
+   if (Config_getSysXAttrsEnabled(cfg) )
+      sb->s_xattr = fhgfs_xattr_handlers_noacl; // 仅处理用户扩展属性
 
 #ifdef KERNEL_HAS_GET_ACL
    if (Config_getSysACLsEnabled(cfg) )
    {
-      sb->s_xattr = fhgfs_xattr_handlers; // replace with acl-capable xattr handlers
+      sb->s_xattr = fhgfs_xattr_handlers; // 替换为支持ACL的扩展属性处理函数
 #ifdef SB_POSIXACL
-      sb->s_flags |= SB_POSIXACL;
+      sb->s_flags |= SB_POSIXACL;       // 启用POSIX ACL支持
 #else
       sb->s_flags |= MS_POSIXACL;
 #endif
@@ -303,7 +356,7 @@ int FhgfsOps_fillSuper(struct super_block* sb, void* rawMountOptions, int silent
 #endif // KERNEL_HAS_GET_ACL
    if (Config_getSysXAttrsCheckCapabilities(cfg) != CHECKCAPABILITIES_Always)
    #if defined(SB_NOSEC)
-      sb->s_flags |= SB_NOSEC;
+      sb->s_flags |= SB_NOSEC;          // 禁用写操作时的能力检查
    #else
       sb->s_flags |= MS_NOSEC;
    #endif
@@ -313,7 +366,7 @@ int FhgfsOps_fillSuper(struct super_block* sb, void* rawMountOptions, int silent
     * initialized in vfs generic mount functions.
       sb->s_flags |= MS_ACTIVE; // used in iput_final()  */
 
-   // NFS kernel export is probably not worth the backport efforts for kernels before 2.6.29
+   // NFS内核导出支持（2.6.29及更高版本）
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,29)
    sb->s_export_op = &fhgfs_export_ops;
 #endif
@@ -322,22 +375,22 @@ int FhgfsOps_fillSuper(struct super_block* sb, void* rawMountOptions, int silent
    sb->s_bdi = FhgfsOps_getBdi(sb);
 #endif
 
-   // init root inode
-
+   // 初始化根inode
    memset(&kstat, 0, sizeof(struct kstat) );
 
-   kstat.ino = BEEGFS_INODE_ROOT_INO;
-   kstat.mode = S_IFDIR | 0777; // allow access for everyone
-   kstat.atime = kstat.mtime = kstat.ctime = current_fs_time(sb);
-   kstat.uid = current_fsuid();
-   kstat.gid = current_fsgid();
-   kstat.blksize = Config_getTuneInodeBlockSize(cfg);
-   kstat.nlink = 1;
+   kstat.ino = BEEGFS_INODE_ROOT_INO;           // 根inode特殊编号
+   kstat.mode = S_IFDIR | 0777;                 // 目录类型，所有人可访问
+   kstat.atime = kstat.mtime = kstat.ctime = current_fs_time(sb);  // 设置时间戳
+   kstat.uid = current_fsuid();                 // 当前用户ID
+   kstat.gid = current_fsgid();                 // 当前组ID
+   kstat.blksize = Config_getTuneInodeBlockSize(cfg);  // 块大小
+   kstat.nlink = 1;                             // 链接数
 
-   // root entryInfo is always updated when someone asks for it (so we just set dummy values here)
+   // 初始化根目录entryInfo（总是在需要时更新，这里只设置虚拟值）
    EntryInfo_init(&entryInfo, NodeOrGroup_fromGroup(0), StringTk_strDup(""), StringTk_strDup(""),
       StringTk_strDup(""), DirEntryType_DIRECTORY, 0);
 
+   // 创建根inode
    rootInode = __FhgfsOps_newInode(sb, &kstat, 0, &entryInfo, &iSizeHints);
    if(!rootInode || IS_ERR(rootInode) )
    {
@@ -345,6 +398,7 @@ int FhgfsOps_fillSuper(struct super_block* sb, void* rawMountOptions, int silent
       return IS_ERR(rootInode) ? PTR_ERR(rootInode) : -ENOMEM;
    }
 
+   // 创建根目录dentry
    rootDentry = d_make_root(rootInode);
    if(!rootDentry)
    {
@@ -353,21 +407,25 @@ int FhgfsOps_fillSuper(struct super_block* sb, void* rawMountOptions, int silent
    }
 
 #ifdef KERNEL_HAS_S_D_OP
-   // linux 2.6.38 switched from individual per-dentry to defaul superblock d_ops.
+   // Linux 2.6.38之后转向使用默认的超级块dentry操作
    /* note: Only set default dentry operations here, as we don't want those OPs set for the root
     * dentry. In fact, setting as before would only slow down everything a bit, due to
     * useless revalidation of our root dentry. */
    sb->s_d_op = &fhgfs_dentry_ops;
 #endif // KERNEL_HAS_S_D_OP
 
-   rootDentry->d_time = jiffies;
-   sb->s_root = rootDentry;
+   rootDentry->d_time = jiffies;   // 设置dentry时间戳
+   sb->s_root = rootDentry;        // 设置超级块的根dentry
 
    return 0;
 }
 
-/*
- * Called by FhgfsOps_killSB()->kill_anon_super()->generic_shutdown_super()
+/**
+ * 当执行FhgfsOps_killSB()->kill_anon_super()->generic_shutdown_super()时调用。
+ * 
+ * 卸载文件系统时的清理函数，销毁超级块信息。
+ * 
+ * @param sb 超级块结构体指针
  */
 void FhgfsOps_putSuper(struct super_block* sb)
 {
@@ -380,18 +438,26 @@ void FhgfsOps_putSuper(struct super_block* sb)
    }
 }
 
+/**
+ * 文件系统卸载时的处理函数。
+ * 
+ * 禁用连接重试（加速卸载），刷新工作队列，
+ * 注销BDI，然后调用通用的超级块销毁函数。
+ * 
+ * @param sb 超级块结构体指针
+ */
 void FhgfsOps_killSB(struct super_block* sb)
 {
    App* app = FhgfsOps_getApp(sb);
 
-   if (app) // might be NULL on unsuccessful mount attempt
-      App_setConnRetriesEnabled(app, false); // faster umount on communication errors
+   if (app) // 在挂载尝试失败时可能为NULL
+      App_setConnRetriesEnabled(app, false); // 禁用连接重试，加速卸载
 
-   RWPagesWork_flushWorkQueue();
+   RWPagesWork_flushWorkQueue();  // 刷新所有待处理的页面工作
 
 #if defined(KERNEL_HAS_SB_BDI) && LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
    /**
-    * s_fs_info might be NULL
+    * s_fs_info可能为NULL
     */
    if (likely(sb->s_fs_info) )
    {
@@ -401,10 +467,19 @@ void FhgfsOps_killSB(struct super_block* sb)
    }
 #endif
 
-   kill_anon_super(sb);
+   kill_anon_super(sb);  // 调用通用的超级块销毁函数
 }
 
 
+/**
+ * 显示挂载选项。
+ * 
+ * 当读取/proc/mounts时调用，向用户显示当前挂载选项。
+ * 
+ * @param sf seq_file结构体，用于输出
+ * @param dentry 或 vfs 包含超级块的结构
+ * @return 0表示成功
+ */
 #ifdef KERNEL_HAS_SHOW_OPTIONS_DENTRY
 extern int FhgfsOps_showOptions(struct seq_file* sf, struct dentry* dentry)
 {
